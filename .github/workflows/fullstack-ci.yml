@@ -1,0 +1,82 @@
+name: Fullstack CI (Angular + .NET)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---------- ANGULAR ----------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install Angular deps
+        working-directory: .
+        run: npm ci
+
+      - name: Build Angular
+        working-directory: .
+        run: |
+          npm run build --if-present
+          ls -la dist || true
+
+      - name: Upload Angular artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          # Angular v17+ often outputs dist/<app>/browser; this glob captures all
+          path: |
+            dist/**
+          if-no-files-found: warn
+
+      # ---------- .NET BACKEND ----------
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore .NET
+        working-directory: ./backend
+        run: dotnet restore
+
+      - name: Build .NET (Release)
+        working-directory: ./backend
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test .NET (if test project exists)
+        working-directory: ./backend
+        run: |
+          if ls *Tests.csproj 1> /dev/null 2>&1; then
+            dotnet test --configuration Release --no-build --logger "trx;LogFileName=test_results.trx"
+          else
+            echo "No *Tests.csproj found. Skipping tests."
+          fi
+
+      - name: Publish .NET
+        working-directory: ./backend
+        run: dotnet publish --configuration Release --no-build -o ./publish
+
+      - name: Upload .NET artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-publish
+          path: backend/publish/**
+          if-no-files-found: error
