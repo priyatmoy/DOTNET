@@ -1,7 +1,4 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# azure-pipelines.yml  (Angular only)
 trigger:
   - main
 
@@ -9,19 +6,47 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
+  - checkout: self
+    clean: true
+
   - task: NodeTool@0
+    displayName: 'Use Node 20.x'
     inputs:
-      versionSpec: '18.x'
-    displayName: 'Install Node.js'
+      versionSpec: '20.x'
 
-  - script: npm install
-    displayName: 'Install dependencies'
+  - script: |
+      node -v
+      npm -v
+    displayName: 'Show Node & npm versions'
 
-  - script: npm run build
-    displayName: 'Build the app'
+  # If your Angular project is at repo root (as in your screenshot),
+  # leave workingDirectory as "."
+  # If it’s in a folder (e.g. ./frontend), set workingDirectory accordingly.
+
+  - script: npm ci
+    workingDirectory: .
+    displayName: 'Install deps (npm ci)'
+
+  - script: |
+      if npm run | grep -q "^  build"; then
+        echo "Running npm run build"
+        npm run build
+      else
+        echo "No build script found. Using Angular CLI directly."
+        npx @angular/cli@19 build --configuration=production
+      fi
+    workingDirectory: .
+    displayName: 'Build Angular app'
+
+  - script: |
+      echo "Dist contents:"
+      ls -la dist || true
+    workingDirectory: .
+    displayName: 'List dist output (debug)'
 
   - task: PublishBuildArtifacts@1
+    displayName: 'Publish build artifacts'
     inputs:
-      pathToPublish: 'build' # or 'dist' for Angular
-      artifactName: 'drop'
+      PathtoPublish: 'dist'
+      ArtifactName: 'web-dist'
       publishLocation: 'Container'
